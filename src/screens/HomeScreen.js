@@ -2,20 +2,24 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  FlatList,
   StatusBar,
   SafeAreaView,
-  ScrollView, 
+  ScrollView,
+  FlatList,
+  Dimensions,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Geolocation from '@react-native-community/geolocation';
 import * as Animatable from 'react-native-animatable';
+
+import { fetchCurrentWeather, fetchForecast } from '../utils/apiHandler';
+import { globalStyles, COLORS, FONTS } from '../styles/globalStyles';
+
 import CitySearchModal from '../components/CitySearchModal';
 import WeatherStatCard from '../components/WeatherStatCard';
 import WeatherHeader from '../components/WeatherHeader';
 
-const API_KEY = 'a9e69cf557ecfe6ddbf4e72af2e21b2a';
+const { width, height } = Dimensions.get('window');
 
 const HomeScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
@@ -29,53 +33,35 @@ const HomeScreen = () => {
   const [coords, setCoords] = useState({ lat: null, long: null });
   const [loading, setLoading] = useState(true);
 
+  // Get current location
   const getCurrentLocation = () => {
     Geolocation.getCurrentPosition(
       info => {
         const lat = info.coords.latitude;
         const long = info.coords.longitude;
         setCoords({ lat, long });
-        Currentweather({ lat, long });
-        getWeeklyData({ lat, long });
+        loadWeather({ lat, long });
+        loadForecast({ lat, long });
       },
       error => {
         console.error('Geolocation error:', error.message);
         setLoading(false);
       },
-      { enableHighAccuracy: true},
+      { enableHighAccuracy: true },
     );
   };
 
   const handleSelectCity = cityObj => {
-    if (!cityObj || !cityObj.city || !cityObj.lat || !cityObj.long) {
-      console.warn('Invalid city object selected');
-      return;
-    }
-
+    if (!cityObj || !cityObj.city || !cityObj.lat || !cityObj.long) return;
     setCityName(cityObj.city);
     setCoords({ lat: cityObj.lat, long: cityObj.long });
   };
 
-  const Currentweather = async ({ lat, long, city }) => {
+  // Fetch current weather
+  const loadWeather = async ({ lat, long, city }) => {
     try {
       setLoading(true);
-      let url = '';
-
-      if (city) {
-        url = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${API_KEY}&units=metric`;
-      } else if (lat && long) {
-        url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${long}&appid=${API_KEY}&units=metric`;
-      } else {
-        throw new Error('No valid location for current weather.');
-      }
-
-      const response = await fetch(url);
-      const json = await response.json();
-
-      if (!response.ok || !json.timezone) {
-        throw new Error(json.message || 'Invalid weather data');
-      }
-
+      const json = await fetchCurrentWeather({ lat, long, city });
       setWeather(json);
 
       const timezoneOffset = json.timezone;
@@ -104,25 +90,10 @@ const HomeScreen = () => {
     }
   };
 
-  const getWeeklyData = async ({ lat, long, city }) => {
+  // Fetch forecast
+  const loadForecast = async ({ lat, long, city }) => {
     try {
-      let url = '';
-
-      if (city) {
-        url = `https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${API_KEY}&units=metric`;
-      } else if (lat && long) {
-        url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${long}&appid=${API_KEY}&units=metric`;
-      } else {
-        throw new Error('No valid location for forecast.');
-      }
-
-      const response = await fetch(url);
-      const json = await response.json();
-
-      if (!response.ok || !json.city) {
-        throw new Error(json.message || 'Invalid forecast data');
-      }
-
+      const json = await fetchForecast({ lat, long, city });
       const timezoneOffset = json.city.timezone;
 
       const formatTime = timestamp => {
@@ -134,6 +105,7 @@ const HomeScreen = () => {
         return `${h}:${minutes < 10 ? '0' : ''}${minutes} ${ampm}`;
       };
 
+      // Hourly (next 7)
       const hourly = json.list.slice(0, 7).map(item => ({
         dt: item.dt,
         time: formatTime(item.dt),
@@ -141,6 +113,7 @@ const HomeScreen = () => {
         weather: item.weather,
       }));
 
+      // Daily (group by date)
       const grouped = {};
       json.list.forEach(item => {
         const date = new Date(item.dt * 1000).toDateString();
@@ -168,38 +141,44 @@ const HomeScreen = () => {
     }
   };
 
+  // Load on mount
   useEffect(() => {
     getCurrentLocation();
   }, []);
 
+  // Reload when city changes
   useEffect(() => {
     if (cityName) {
-      Currentweather({ city: cityName });
-      getWeeklyData({ city: cityName });
+      loadWeather({ city: cityName });
+      loadForecast({ city: cityName });
     }
   }, [cityName]);
 
+  // Loader
   if (loading || !weather?.main || !weather?.weather) {
     return (
       <SafeAreaView style={{ flex: 1 }}>
         <LinearGradient
-          colors={['#43cea2', '#185a9d']}
+          colors={[COLORS.primary, COLORS.secondary]}
           style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
         >
-          <StatusBar barStyle="light-content" backgroundColor="#43cea2" />
-          <Text style={[styles.statValue]}>Loading weather data...</Text>
+          <StatusBar
+            barStyle="light-content"
+            backgroundColor={COLORS.primary}
+          />
+          <Text style={globalStyles.textBold}>Loading weather data...</Text>
         </LinearGradient>
       </SafeAreaView>
     );
-  } else
-    return (
-      <SafeAreaView style={{ flex: 1 }}>
-        <StatusBar barStyle="light-content" backgroundColor="#43cea2" />
-        <LinearGradient
-          colors={['#43cea2', '#185a9d']}
-          style={StyleSheet.absoluteFill}
-        />
+  }
 
+  return (
+    <SafeAreaView style={{ flex: 1 }}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <LinearGradient
+        colors={[COLORS.primary, COLORS.secondary]}
+        style={{ flex: 1 }}
+      >
         <WeatherHeader
           city={weather?.name}
           onSearchPress={() => setModalVisible(true)}
@@ -213,13 +192,15 @@ const HomeScreen = () => {
 
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ padding: 16 }}
+          contentContainerStyle={{ padding: width * 0.04 }}
         >
-          <View style={styles.titles}>
-            <Text style={styles.dateTimeCombined}>{currentDateTime}</Text>
+          {/* Date & Time */}
+          <View style={{ alignItems: 'center', marginBottom: height * 0.015 }}>
+            <Text style={globalStyles.textRegular}>{currentDateTime}</Text>
           </View>
 
-          <View style={styles.weatherDisplay}>
+          {/* Current Weather */}
+          <View style={{ alignItems: 'center', marginBottom: height * 0.03 }}>
             <Animatable.Image
               animation="pulse"
               easing="ease-in-out"
@@ -228,19 +209,26 @@ const HomeScreen = () => {
               source={{
                 uri: `https://openweathermap.org/img/wn/${weather?.weather?.[0]?.icon}@4x.png`,
               }}
-              style={styles.weatherIcon}
+              style={{
+                width: width * 0.55,
+                height: height * 0.18,
+                resizeMode: 'contain',
+              }}
             />
-            <Text style={styles.temperature}>{weather?.main?.temp} °C</Text>
-            <Text style={styles.condition}>{weather?.weather?.[0]?.main}</Text>
-            <Text style={styles.highLow}>
+            <Text style={globalStyles.textBold}>{weather?.main?.temp} °C</Text>
+            <Text style={globalStyles.textRegular}>
+              {weather?.weather?.[0]?.main}
+            </Text>
+            <Text style={globalStyles.textRegular}>
               High: {weather?.main?.temp_max} °C
             </Text>
-            <Text style={styles.highLow}>
+            <Text style={globalStyles.textRegular}>
               Low: {weather?.main?.temp_min} °C
             </Text>
           </View>
 
-          <Text style={styles.title}>Hourly Forecast</Text>
+          {/* Hourly Forecast */}
+          <Text style={globalStyles.title}>Hourly Forecast</Text>
           <FlatList
             horizontal
             data={hourlyData}
@@ -248,28 +236,34 @@ const HomeScreen = () => {
             renderItem={({ item }) => {
               const icon = item.weather?.[0]?.icon;
               return (
-                <View style={styles.card}>
-                  <Text style={styles.time}>{item.time}</Text>
+                <View
+                  style={[
+                    globalStyles.card,
+                    { alignItems: 'center', marginRight: width * 0.03 },
+                  ]}
+                >
+                  <Text style={globalStyles.textRegular}>{item.time}</Text>
                   <Animatable.Image
                     source={{
                       uri: `https://openweathermap.org/img/wn/${icon}@2x.png`,
                     }}
-                    style={styles.icon}
+                    style={{ width: width * 0.1, height: width * 0.1 }}
                     animation="pulse"
                     easing="ease-in-out"
                     iterationCount="infinite"
                     duration={2000}
                   />
-                  <Text style={styles.temp}>{Math.round(item.temp)} °C</Text>
+                  <Text style={globalStyles.textRegular}>
+                    {Math.round(item.temp)} °C
+                  </Text>
                 </View>
               );
             }}
             showsHorizontalScrollIndicator={false}
           />
 
-          <View style={styles.sectionDivider} />
-
-          <Text style={styles.title}>Weekly Forecast</Text>
+          {/* Weekly Forecast */}
+          <Text style={globalStyles.title}>Weekly Forecast</Text>
           <FlatList
             data={dailyData}
             keyExtractor={(item, index) => index.toString()}
@@ -277,38 +271,60 @@ const HomeScreen = () => {
               const icon = item.weather?.[0]?.icon;
               const dayName = new Date(item.dt * 1000).toLocaleDateString(
                 'en-US',
-                { weekday: 'long' },
+                {
+                  weekday: 'long',
+                },
               );
               return (
-                <View style={styles.item}>
-                  <Text style={styles.day}>{dayName}</Text>
+                <View
+                  style={[
+                    globalStyles.card,
+                    {
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    },
+                  ]}
+                >
+                  <Text style={globalStyles.textRegular}>{dayName}</Text>
                   <Animatable.Image
                     source={{
                       uri: `https://openweathermap.org/img/wn/${icon}@2x.png`,
                     }}
-                    style={styles.icon}
+                    style={{ width: width * 0.1, height: width * 0.1 }}
                     animation="pulse"
                     easing="ease-in-out"
                     iterationCount="infinite"
                     duration={2000}
                   />
-                  <Text style={styles.conditions}>
+                  <Text style={globalStyles.textRegular}>
                     {item.weather?.[0]?.main}
                   </Text>
-                  <Text style={styles.highlow}>
-                    High: {Math.round(item.temp.max)}° Low:
-                    {Math.round(item.temp.min)}°
-                  </Text>
+                  <View
+                    style={{ flexDirection: 'column', alignItems: 'flex-end' }}
+                  >
+                    <Text style={globalStyles.textRegular}>
+                      High: {Math.round(item.temp.max)}°
+                    </Text>
+                    <Text style={globalStyles.textRegular}>
+                      Low: {Math.round(item.temp.min)}°
+                    </Text>
+                  </View>
                 </View>
               );
             }}
             scrollEnabled={false}
           />
 
-          <View style={styles.sectionDivider} />
-
-          <Text style={styles.title}>Current conditions</Text>
-          <View style={styles.weatherStatsGrid}>
+          {/* Current Conditions */}
+          <Text style={globalStyles.title}>Current Conditions</Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              justifyContent: 'space-between',
+            }}
+          >
             <WeatherStatCard
               label="Feels Like"
               value={`${weather?.main?.feels_like} °C`}
@@ -337,130 +353,9 @@ const HomeScreen = () => {
             <WeatherStatCard label="Sunset" value={sunsetTime} />
           </View>
         </ScrollView>
-      </SafeAreaView>
-    );
+      </LinearGradient>
+    </SafeAreaView>
+  );
 };
 
 export default HomeScreen;
-
-const styles = StyleSheet.create({
-  titles: {
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  dateTimeCombined: {
-    fontSize: 16,
-    color: 'white',
-    fontFamily: 'MerriweatherSans-Regular',
-    opacity: 0.9,
-    // marginBottom: 8,
-  },
-
-  weatherDisplay: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  weatherIcon: {
-    width: 235,
-    height: 130,
-  },
-  temperature: {
-    fontSize: 30,
-    color: 'white',
-    fontFamily: 'MerriweatherSans-Bold',
-  },
-  condition: {
-    fontSize: 22,
-    color: 'white',
-    fontFamily: 'MerriweatherSans-SemiBold',
-  },
-  highLow: {
-    fontSize: 12,
-    color: 'white',
-    opacity: 0.85,
-    fontFamily: 'MerriweatherSans-Regular',
-  },
-  title: {
-    fontSize: 20,
-    color: '#ffffff',
-    marginLeft: 5,
-    fontFamily: 'MerriweatherSans-Bold',
-    marginBottom: 10,
-  },
-  card: {
-    backgroundColor: '#ffffff26',
-    width: 80,
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    marginRight: 12,
-    borderWidth: 0.5,
-    borderColor: '#ffffff4d',
-  },
-  time: {
-    fontSize: 12,
-    color: '#ffffff',
-    fontFamily: 'MerriweatherSans-SemiBold',
-  },
-  icon: {
-    width: 40,
-    height: 40,
-    resizeMode: 'contain',
-  },
-  temp: {
-    fontSize: 14,
-    fontFamily: 'MerriweatherSans-Bold',
-    color: '#ffffff',
-  },
-  sectionDivider: {
-    height: 1,
-    backgroundColor: '#ffffff4d',
-    marginVertical: 20,
-    width: '90%',
-    alignSelf: 'center',
-  },
-  item: {
-    backgroundColor: '#ffffff26',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 0.5,
-    borderColor: '#ffffff4d',
-  },
-  day: {
-    fontSize: 14,
-    color: '#ffffff',
-    width: 90,
-    fontFamily: 'MerriweatherSans-Bold',
-  },
-  conditions: {
-    fontSize: 16,
-    color: '#ffffff',
-    flex: 1,
-    textAlign: 'center',
-    fontFamily: 'MerriweatherSans-Regular',
-  },
-  highlow: {
-    fontSize: 13,
-    color: '#ffffff',
-    width: 80,
-    textAlign: 'center',
-    fontFamily: 'MerriweatherSans-SemiBold',
-  },
-  weatherStatsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginTop: 10,
-    paddingHorizontal: 10,
-  },
-  statValue: {
-    color: 'white',
-    fontSize: 16,
-    fontFamily: 'MerriweatherSans-Bold',
-  },
-});
