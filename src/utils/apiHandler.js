@@ -1,7 +1,8 @@
-const API_KEY = 'a9e69cf557ecfe6ddbf4e72af2e21b2a';
-const BASE_URL = 'https://api.openweathermap.org/data/2.5';
+import { API_KEY, BASE_URL } from '@env';
 
-export const fetchCities = async (search) => {
+console.log('API KEY is', API_KEY);
+console.log('first 5 of BASE_URL is', BASE_URL);
+export const fetchCities = async search => {
   if (!search) return [];
   try {
     const response = await fetch(

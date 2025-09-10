@@ -11,7 +11,6 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import Geolocation from '@react-native-community/geolocation';
 import * as Animatable from 'react-native-animatable';
-
 import { fetchCurrentWeather, fetchForecast } from '../utils/apiHandler';
 import { globalStyles, COLORS, FONTS } from '../styles/globalStyles';
 
